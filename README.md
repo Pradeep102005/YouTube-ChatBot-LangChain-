@@ -74,7 +74,7 @@ Before running this project, ensure you have the following installed:
 4. **Vector Store**: Indexes embedded chunks using `FAISS` for rapid similarity search.
 5. **Retrieval**: Fetches the top `k=4` chunks most similar to your query.
 6. **Generation / RAG**: Formats retrieved chunks as raw text and pairs them with the system prompt to guide `gemma2:2b` to answer your query securely.
-
+##testing
 ## Contributing
 
 Contributions, issues, and feature requests are welcome! Feel free to check [issues page](https://github.com/Pradeep102005/YouTube-ChatBot-LangChain-/issues).

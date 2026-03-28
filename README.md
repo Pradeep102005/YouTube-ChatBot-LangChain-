@@ -1,227 +1,84 @@
-# YouTube Chatbot with LangChain
+# YouTube Transcript Chatbot (RAG Pipeline)
 
-Chat with any YouTube video using its transcript. Built to escape tutorial hell — by actually building something.
+A robust Retrieval-Augmented Generation (RAG) pipeline built with Python, LangChain, and Ollama. This project extracts transcripts from YouTube videos, processes them into vectorized chunks, and allows you to ask targeted conversational questions about the content of the video using a local LLM through Ollama.
 
----
+## Features
 
-## What it does
+- **Automated Transcript Retrieval**: Fetches transcripts directly via `youtube-transcript-api` using just a YouTube video ID.
+- **Efficient Text Chunking**: Leverages `RecursiveCharacterTextSplitter` to optimally segment long transcripts while retaining meaningful context overlap.
+- **Local Embedding & Vector Search**: Utilizes `OllamaEmbeddings` (nomic-embed-text) and `FAISS` to store and swiftly retrieve relevant document chunks.
+- **Local LLM Integration**: Employs `ChatOllama` (gemma2:2b) to generate conversational and entirely localized responses based purely on the retrieved video context.
+- **Privacy-First**: Thanks to Ollama, both embedding generation and LLM inference run entirely on your local machine.
 
-Paste a YouTube URL → ask questions about the video → get answers grounded in the transcript.
+## Prerequisites
 
-No hallucinations about content that isn't there. If it's not in the transcript, it says so.
+Before running this project, ensure you have the following installed:
 
----
+1. **Python 3.8+**
+2. **Ollama**: You need [Ollama](https://ollama.com/) installed and running locally.
+3. **Ollama Models**: Pull the required local models used in instructions:
+   ```bash
+   ollama run gemma2:2b
+   ollama pull nomic-embed-text
+   ```
 
-## How it works
+## Installation
 
-```
-YouTube URL
-    │
-    ▼
-YoutubeLoader          ← pulls transcript via youtube-transcript-api
-    │
-    ▼
-RecursiveCharacterTextSplitter    ← chunks transcript into ~1000 token pieces
-    │
-    ▼
-OpenAIEmbeddings       ← embeds each chunk
-    │
-    ▼
-FAISS / Chroma         ← stores vectors locally
-    │
-    ▼
-ConversationalRetrievalChain      ← retrieves relevant chunks + answers with GPT
-    │
-    ▼
-Chat interface (CLI / Streamlit)
-```
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/your-username/your-repo-name.git
+   cd your-repo-name
+   ```
 
----
+2. **Set up a virtual environment (optional but recommended):**
+   ```bash
+   python -m venv venv
+   # On Windows
+   venv\Scripts\activate
+   # On macOS/Linux
+   source venv/bin/activate
+   ```
 
-## Stack
+3. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+   *If `requirements.txt` is missing, you can install the necessary packages manually:*
+   ```bash
+   pip install langchain-core langchain-ollama langchain-community langchain-text-splitters youtube-transcript-api faiss-cpu python-dotenv
+   ```
 
-| Layer | Library |
-|---|---|
-| Document loading | `langchain-community` — `YoutubeLoader` |
-| Text splitting | `RecursiveCharacterTextSplitter` |
-| Embeddings | `OpenAIEmbeddings` (or swap for `HuggingFaceEmbeddings`) |
-| Vector store | `FAISS` (local, no server needed) |
-| LLM | `ChatOpenAI` — GPT-4o-mini |
-| Memory | `ConversationBufferMemory` |
-| UI | Streamlit (optional) |
-
----
-
-## Project structure
-
-```
-youtube-chatbot/
-├── app.py                  # Streamlit UI
-├── chatbot.py              # Core chain logic
-├── loader.py               # YouTube loading + splitting
-├── vectorstore.py          # Embed + store + retrieve
-├── requirements.txt
-├── .env.example
-└── README.md
-```
-
----
-
-## Setup
-
-**1. Clone and install**
-
-```bash
-git clone https://github.com/your-username/youtube-chatbot.git
-cd youtube-chatbot
-python -m venv venv
-source venv/bin/activate   # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-**2. Set your API key**
-
-```bash
-cp .env.example .env
-# Edit .env and add your OpenAI key
-```
-
-```env
-OPENAI_API_KEY=sk-...
-```
-
-**3. Run**
-
-```bash
-# CLI mode
-python chatbot.py
-
-# Streamlit UI
-streamlit run app.py
-```
-
----
+4. **Environment Variables:**
+   Create a `.env` file in the root directory if any specific environment variables are needed by your local setup, though local Ollama usage generally does not require an API key.
 
 ## Usage
 
-```python
-from loader import load_youtube_video
-from vectorstore import build_vectorstore
-from chatbot import build_chain
+1. Open `main.py`.
+2. Find the `video_id` variable and replace it with the YouTube video ID you want to query. 
+   *(e.g., for `https://www.youtube.com/watch?v=Gfr50f6ZBvo`, the ID is `Gfr50f6ZBvo`)*.
+3. Set your target question in the `question` variable:
+   ```python
+   question = "What are the main topics discussed in this video?"
+   ```
+4. Run the script:
+   ```bash
+   python main.py
+   ```
+5. The LLM will output a helpful answer directly sourced from the video's transcript!
 
-# Load and index a video
-docs = load_youtube_video("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
-vectorstore = build_vectorstore(docs)
-chain = build_chain(vectorstore)
+## Project Structure (Pipeline Steps)
 
-# Chat
-response = chain.invoke({
-    "question": "What is the main topic of this video?",
-    "chat_history": []
-})
-print(response["answer"])
-```
+1. **Indexing (Document Ingestion)**: Downloads the YouTube video transcript text.
+2. **Text Splitting**: Splits text into chunk sizes of 1000 characters with a 200-character overlap for context retention.
+3. **Embeddings**: Represents text chunks densely using local `nomic-embed-text`.
+4. **Vector Store**: Indexes embedded chunks using `FAISS` for rapid similarity search.
+5. **Retrieval**: Fetches the top `k=4` chunks most similar to your query.
+6. **Generation / RAG**: Formats retrieved chunks as raw text and pairs them with the system prompt to guide `gemma2:2b` to answer your query securely.
 
----
+## Contributing
 
-## Core code
-
-**loader.py**
-
-```python
-from langchain_community.document_loaders import YoutubeLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-
-def load_youtube_video(url: str):
-    loader = YoutubeLoader.from_youtube_url(url, add_video_info=True)
-    docs = loader.load()
-
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=200,
-    )
-    return splitter.split_documents(docs)
-```
-
-**vectorstore.py**
-
-```python
-from langchain_community.vectorstores import FAISS
-from langchain_openai import OpenAIEmbeddings
-
-def build_vectorstore(docs):
-    embeddings = OpenAIEmbeddings()
-    return FAISS.from_documents(docs, embeddings)
-```
-
-**chatbot.py**
-
-```python
-from langchain.chains import ConversationalRetrievalChain
-from langchain.memory import ConversationBufferMemory
-from langchain_openai import ChatOpenAI
-
-def build_chain(vectorstore):
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-    memory = ConversationBufferMemory(
-        memory_key="chat_history",
-        return_messages=True,
-        output_key="answer",
-    )
-    return ConversationalRetrievalChain.from_llm(
-        llm=llm,
-        retriever=vectorstore.as_retriever(search_kwargs={"k": 4}),
-        memory=memory,
-        return_source_documents=True,
-    )
-```
-
----
-
-## Limitations
-
-- Only works on videos that have a transcript (auto-generated or manual captions)
-- Very long videos (3h+) may hit context limits — consider filtering chunks by timestamp
-- Private or age-restricted videos will fail at the loader step
-- FAISS index is in-memory; reloading requires re-embedding
-
----
-
-## What I learned building this
-
-- **Document loaders are step 1 of everything** — garbage in, garbage out. `YoutubeLoader` metadata (`source`, `title`, `author`) flows all the way to the final answer source citations.
-- **`lazy_load()` matters for long videos** — buffering a 2h transcript into memory at once is wasteful.
-- **Chunk overlap is not optional** — sentences at chunk boundaries get split mid-thought. 200 token overlap rescued a lot of bad retrievals.
-- **Memory key naming is a footgun** — `ConversationBufferMemory` and `ConversationalRetrievalChain` must agree on `memory_key` and `output_key` or the chain silently breaks.
-- **`k=4` in the retriever is a reasonable default** — more chunks = more noise, fewer = missed context.
-
----
-
-## Possible next steps
-
-- [ ] Persist FAISS index to disk so re-embedding is skipped on reload
-- [ ] Swap `FAISS` for `Chroma` with a local server for multi-video search
-- [ ] Add timestamp metadata to chunks and surface them in answers
-- [ ] Support playlists via `YoutubeLoader` batch loading
-- [ ] Replace `OpenAIEmbeddings` with `nomic-embed-text` for a free local option
-
----
-
-## Requirements
-
-```
-langchain>=0.3.0
-langchain-community>=0.3.0
-langchain-openai>=0.2.0
-faiss-cpu>=1.8.0
-youtube-transcript-api>=0.6.0
-pytube>=15.0.0
-streamlit>=1.35.0
-python-dotenv>=1.0.0
-```
-
----
+Contributions, issues, and feature requests are welcome! Feel free to check [issues page](https://github.com/Pradeep102005/YouTube-ChatBot-LangChain-/issues).
 
 ## License
 
-MIT
+This project is licensed under the MIT License.
